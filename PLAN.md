@@ -98,6 +98,7 @@ button	tell	564,624,140,28	Tell Claude	stick=left,bottom	tip=Ask the AI to read 
 | `may=<word>` | shown only to users who may (LIB_USERS word, e.g. `may=save`) |
 | `theme=<name>` | on the window: the LIB_THEME theme |
 | `float=front` | on the window: stays in front of other windows (the toolbar) |
+| `glyph=<name>` | later: a 1-bit picture from LIB_BIT shown in place of a symbol, the same in every face (a face's font may lack `▶`) |
 | `x-<anything>=` | an app's own option; faces ignore it, the file keeps it |
 
 A face that meets a kind or option it does not know **skips it and says so** (`Gui.Problems()`),
