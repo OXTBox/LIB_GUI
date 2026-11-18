@@ -1,6 +1,6 @@
 # LIB_GUI
 
-Monday, November 16, 2026. Planned, not built yet: read `PLAN.md`.
+Monday, November 16, 2026. Plan: `PLAN.md`. Built so far (17 Nov): the `.gui` reader and the native face, see `NEXT.md`.
 
 A window as a small text file (`.gui`: one widget a line), shown by any "face": real xTalk
 controls here, raygui inside xt3d (LIB_RAYGUI), vector lines and Python later. Plus the GUI

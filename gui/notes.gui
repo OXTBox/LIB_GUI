@@ -1,0 +1,13 @@
+# Notes: a small window with one of every kind the native face draws (stage 2).
+# Build it:  Gui.Build Gui.Load(<this file>), "Notes"   then   go stack "Notes"
+gui	1
+window	Notes	420,330	Notes	theme=dark
+menu	File	Save|-|Close
+label	title	8,36,200,20	A note for the game
+choice	game	212,34,200,24	Vector Toss|Block City|Dead Days	value=Block City
+field	subject	8,64,404,24	hint=One line: what it is about
+text	note	8,96,404,150	stick=left,top,right,bottom
+line	rule	8,256,404,0
+toggle	urgent	8,266,120,24	Urgent
+list	who	136,266,140,56	Owner|Claude|Spark	value=Owner
+button	save	312,294,100,28	Save	stick=right,bottom	do=SaveNote	tip=Write the note to the notes file

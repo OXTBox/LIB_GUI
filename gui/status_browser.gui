@@ -1,0 +1,10 @@
+# kind    name     then, in any order: a place (x,y,w,h), a label, and key=value options
+gui	1
+window	StatusBrowser	1140,700	Status Browser	theme=dark	min=800,500
+menu	File	Refresh|-|Quit
+menu	Help	About
+list	files	8,38,420,620	stick=left,top,bottom
+text	note	436,38,696,300	stick=left,top,right
+field	feedback	436,346,696,270	stick=left,right,bottom	hint=Your note about this file
+button	submit	436,624,120,28	Submit	stick=left,bottom
+button	tell	564,624,140,28	Tell Claude	stick=left,bottom	tip=Ask the AI to read your reviews now	do=TellClaude
