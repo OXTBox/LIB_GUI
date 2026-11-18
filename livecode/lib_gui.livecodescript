@@ -15,6 +15,8 @@ script "lib_gui"
 ##   on guiDo pName, pValue  ... end guiDo            in the window's script: a widget was used
 ##   Gui.Resize 700, 500                             lays the window out again by each stick=
 ##                                                   (a built window does it on resizeStack itself)
+##   put Gui.FromStack("MyStack") into tText         a stack's card read out as .gui text (the
+##   Gui.FromStackToFile "MyStack", tFile.gui        owner's hand-laid windows); only reads it
 ## Stage 3 kinds (native face):
 ##   panel   a group with a face (a filled box); widgets with in=<panel> live in it, their places
 ##           counting from its top left. A label shows as a small title at its top
@@ -560,6 +562,7 @@ private command guiWindowOptions pStack, pWidgetA
       end if
    end if
    set the uGuiKind of stack pStack to "window"
+   set the uGuiOptions of stack pStack to guiOptsLine(pWidgetA)
    if pWidgetA["opt"]["float"] is not empty then
       guiProblem pWidgetA["line"], "native: float=" & pWidgetA["opt"]["float"] && "not done yet"
    end if
@@ -921,17 +924,13 @@ end guiMakeTabs
 
 -- what every control carries, so the layout can be read back out of the built stack
 private command guiTag pObj, pKind, pName, pWidgetA
-   local tKey, tOpts
    set the uGuiKind of pObj to pKind
    set the uGuiName of pObj to pName
    set the uGuiDo of pObj to pWidgetA["opt"]["do"]
    set the uGuiSent of pObj to empty
    set the uGuiStick of pObj to pWidgetA["opt"]["stick"]
    set the uGuiTab of pObj to pWidgetA["opt"]["tab"]
-   repeat for each line tKey in pWidgetA["optkeys"]
-      put tab & tKey & "=" & pWidgetA["opt"][tKey] after tOpts
-   end repeat
-   set the uGuiOptions of pObj to char 2 to -1 of tOpts
+   set the uGuiOptions of pObj to guiOptsLine(pWidgetA)
    if pWidgetA["opt"]["tip"] is not empty then
       set the tooltip of pObj to pWidgetA["opt"]["tip"]
    else if pWidgetA["opt"]["hint"] is not empty then
@@ -944,6 +943,15 @@ private command guiTag pObj, pKind, pName, pWidgetA
       guiProblem pWidgetA["line"], "native: may=" & pWidgetA["opt"]["may"] && "not checked yet, shown to all (" & pName & ")"
    end if
 end guiTag
+
+-- a widget's options as they are kept on its control: key=value, tabs between, in file order
+private function guiOptsLine pWidgetA
+   local tKey, tOpts
+   repeat for each line tKey in pWidgetA["optkeys"]
+      put tab & tKey & "=" & pWidgetA["opt"][tKey] after tOpts
+   end repeat
+   return char 2 to -1 of tOpts
+end guiOptsLine
 
 -- after Theme.ApplyStack: labels are words on the page, not boxes; menus and choices dark when
 -- closed (LIB_THEME's menu rule still holds for their open list: see Gui.MenuOpen); lists show
@@ -1404,3 +1412,445 @@ private function guiStickRect pRect, pOld, pNew, pStick, pKind
    end if
    return tL & comma & tT & comma & tR & comma & tB
 end guiStickRect
+
+## ---------------------------------------------------------------------------------
+## Reading a window out of a stack: Gui.FromStack (PLAN.md section 2: the owner lays windows
+## out by hand in the IDE, and the build reads his layout and never writes to his file)
+## ---------------------------------------------------------------------------------
+
+-- the .gui text of a stack's card: the owner's hand-laid window, or one Gui.Build made.
+-- pStack: a stack's name or file path; pCard: a card's number or name (the stack's current card
+-- when empty). Each control becomes one widget line; one it cannot map becomes a "# unknown:"
+-- comment line (and a line in Gui.Problems()), never dropped. It only reads: nothing is set on
+-- the stack, and messages are locked while it reads (no openStack or other script runs).
+function Gui.FromStack pStack, pCard
+   local tWasLocked, tStack, tCard, tNamesA, tUsedA, tTabsA, tObj, tName, tWidgetA, tOut, tBody, n
+   local tMapped, tUnknown, tNoted, tScripts, tWinA, tBar
+   put empty into sProblems
+   if pStack is empty or there is not a stack pStack then
+      guiProblem 0, "no stack" && quote & pStack & quote
+      return empty
+   end if
+   put the lockMessages into tWasLocked
+   set the lockMessages to true
+   put the long id of stack pStack into tStack
+   if pCard is empty then
+      put the long id of this card of stack pStack into tCard
+   else if there is a card pCard of stack pStack then
+      put the long id of card pCard of stack pStack into tCard
+   else
+      set the lockMessages to tWasLocked
+      guiProblem 0, "no card" && quote & pCard & quote && "in" && pStack
+      return empty
+   end if
+   put the menubar of stack pStack into tBar
+   -- the window
+   put guiReadWindow(tStack) into tWinA
+   put true into tUsedA[tWinA["name"]]
+   -- names first (unique, usable in a .gui line), so in= can name a panel read later
+   repeat with n = 1 to the number of controls of tCard
+      put the long id of control n of tCard into tObj
+      if the uGuiPart of tObj is not empty then next repeat
+      put guiReadName(tObj, tUsedA) into tName
+      put tName into tNamesA[tObj]
+      put true into tUsedA[tName]
+   end repeat
+   -- a tab pattern: a tabbed button whose items name groups (each group is that tab's page)
+   repeat with n = 1 to the number of controls of tCard
+      put the long id of control n of tCard into tObj
+      if word 1 of tObj is not "button" or the uGuiKind of tObj is not empty then next repeat
+      if the style of tObj is not "menu" or the menuMode of tObj is not "tabbed" then next repeat
+      repeat for each line tName in the text of tObj
+         if tName is not empty then put tNamesA[tObj] & ":" & tName into tTabsA[tName]
+      end repeat
+   end repeat
+   put 0 into tMapped
+   put 0 into tUnknown
+   put 0 into tNoted
+   put 0 into tScripts
+   repeat with n = 1 to the number of controls of tCard
+      put the long id of control n of tCard into tObj
+      if the uGuiPart of tObj is not empty then next repeat
+      if the script of tObj is not empty then add 1 to tScripts
+      if word 1 of tObj is "group" and tBar is not empty and the short name of tObj is tBar then next repeat
+      put guiReadOne(tObj, tNamesA, tTabsA, tBar) into tWidgetA
+      if tWidgetA["note"] is not empty then
+         put "# note:" && tWidgetA["note"] & return after tBody
+         guiProblem 0, "note:" && tWidgetA["note"]
+         add 1 to tNoted
+      end if
+      if tWidgetA["unknown"] is not empty then
+         put "# unknown:" && tWidgetA["unknown"] & return after tBody
+         guiProblem 0, "unknown:" && tWidgetA["unknown"]
+         add 1 to tUnknown
+      else
+         put guiLine(tNamesA[tObj], tWidgetA) & return after tBody
+         add 1 to tMapped
+      end if
+   end repeat
+   put "# read out of stack" && quote & the short name of tStack & quote && "by Gui.FromStack:" && tMapped && "widgets," && tUnknown && "unknown," && tNoted && "notes" & return into tOut
+   if tScripts > 0 or the script of tCard is not empty or the script of tStack is not empty then
+      put "# not carried: scripts (" & tScripts && "controls" after tOut
+      if the script of tCard is not empty then put ", the card" after tOut
+      if the script of tStack is not empty then put ", the stack:" && the number of lines of the script of tStack && "lines" after tOut
+      put ")" & return after tOut
+   end if
+   put "gui" & tab & "1" & return & guiLine(tWinA["name"], tWinA) & return & tBody after tOut
+   set the lockMessages to tWasLocked
+   delete the last char of tOut
+   return tOut
+end Gui.FromStack
+
+-- writes Gui.FromStack's text to pPath, which must end in .gui (it never writes a stack file)
+command Gui.FromStackToFile pStack, pPath, pCard
+   local tText
+   if not (pPath ends with ".gui") then return "Gui.FromStackToFile writes .gui files only:" && pPath
+   put Gui.FromStack(pStack, pCard) into tText
+   if tText is empty then return Gui.Problems()
+   put textEncode(tText & return, "UTF-8") into url ("binfile:" & pPath)
+   return the result
+end Gui.FromStackToFile
+
+-- the window line: its name, its size, its title (a "FOR OWNER | " kind of start taken off)
+private function guiReadWindow pStack
+   local tW, tTitle
+   put guiReadClean(the short name of pStack) into tW["name"]
+   if tW["name"] is empty or guiIsPlace(tW["name"]) then put "Window" into tW["name"]
+   put "window" into tW["kind"]
+   put the width of pStack & comma & the height of pStack into tW["place"]
+   put the label of pStack into tTitle
+   -- the title is made again by whoever shows it ("FOR OWNER | ..."), so only the words are kept
+   if " | " is in tTitle then
+      set the itemDelimiter to "|"
+      put word 1 to -1 of the last item of tTitle into tTitle
+   else if word 1 of tTitle is "FOR" and the number of words of tTitle > 2 then
+      put word 3 to -1 of tTitle into tTitle
+   end if
+   put guiReadClean(tTitle) into tW["label"]
+   if the uGuiKind of pStack is "window" then
+      guiReadOpts tW, the uGuiOptions of pStack
+   else
+      if the minWidth of pStack > 32 or the minHeight of pStack > 32 then
+         guiOptPut tW, "min", the minWidth of pStack & comma & the minHeight of pStack
+      end if
+      if the resizable of pStack is false then guiOptPut tW, "x-resizable", "false"
+   end if
+   return tW
+end guiReadWindow
+
+-- a name a .gui line can carry: one line, no tabs, no "=", not a place, not a comment, unique
+private function guiReadName pObj, @xUsedA
+   local tName, tBase, n
+   put the uGuiName of pObj into tName
+   if tName is empty then put the short name of pObj into tName
+   put guiReadClean(tName) into tName
+   replace "=" with "_" in tName
+   if tName is empty then put word 1 of pObj into tName
+   if guiIsPlace(tName) or char 1 of tName is "#" then put word 1 of pObj & "_" & tName into tName
+   put tName into tBase
+   put 1 into n
+   repeat while xUsedA[tName] is true
+      add 1 to n
+      put tBase & "_" & n into tName
+   end repeat
+   return tName
+end guiReadName
+
+-- words a .gui field can carry: no tabs, no line ends
+private function guiReadClean pText
+   replace tab with space in pText
+   replace return with space in pText
+   replace numToChar(13) with space in pText
+   return word 1 to -1 of pText
+end guiReadClean
+
+-- lines as items ("|" between them)
+private function guiReadItems pText
+   replace tab with space in pText
+   replace numToChar(13) with empty in pText
+   if char -1 of pText is return then delete char -1 of pText
+   replace return with "|" in pText
+   return pText
+end guiReadItems
+
+-- options kept on a control (key=value, tabs between) into a widget
+private command guiReadOpts @xW, pOpts
+   local tField, tKey
+   set the itemDelimiter to tab
+   repeat for each item tField in pOpts
+      if "=" is not in tField then next repeat
+      put char 1 to offset("=", tField) - 1 of tField into tKey
+      guiOptPut xW, tKey, char offset("=", tField) + 1 to -1 of tField
+   end repeat
+end guiReadOpts
+
+-- sets (or, with an empty value, takes away) one option, keeping the options' order
+private command guiOptPut @xW, pKey, pValue
+   local tKey, tKeys
+   -- not "is empty": on this engine 0 is empty when compared, and value=0 must be kept
+   if the number of chars of pValue is 0 then
+      repeat for each line tKey in xW["optkeys"]
+         if tKey is not pKey then put tKey & return after tKeys
+      end repeat
+      delete the last char of tKeys
+      put tKeys into xW["optkeys"]
+      delete variable xW["opt"][pKey]
+      exit guiOptPut
+   end if
+   if pKey is not among the lines of xW["optkeys"] then
+      if xW["optkeys"] is empty then
+         put pKey into xW["optkeys"]
+      else
+         put return & pKey after xW["optkeys"]
+      end if
+   end if
+   put guiReadClean(pValue) into xW["opt"][pKey]
+end guiOptPut
+
+-- one control as a widget (["kind"], ["place"], ["label"], ["opt"], ["optkeys"]); ["unknown"]
+-- says what it is when it has no kind; ["note"] says what of it is not carried
+private function guiReadOne pObj, pNamesA, pTabsA, pBar
+   local tW, tType, tOwner, tIn, tBaseX, tBaseY, tPoints, tName
+   put word 1 of pObj into tType
+   put pNamesA[pObj] into tName
+   put the long id of the owner of pObj into tOwner
+   put 0 into tBaseX
+   put 0 into tBaseY
+   if word 1 of tOwner is "group" then
+      if pBar is not empty and the short name of tOwner is pBar then
+         put "menubar" into tIn
+      else
+         put pNamesA[tOwner] into tIn
+         put the left of tOwner into tBaseX
+         put the top of tOwner into tBaseY
+      end if
+   end if
+   if the uGuiKind of pObj is not empty then
+      put guiReadBuilt(pObj) into tW
+   else
+      put guiReadHand(pObj, tIn) into tW
+   end if
+   -- its place, counted from its panel
+   set the itemDelimiter to comma
+   if tW["kind"] is "line" then
+      put the points of pObj into tPoints
+      put guiShift(line 1 of tPoints & comma & line -1 of tPoints, 0 - tBaseX, 0 - tBaseY) into tPoints
+      put item 1 of tPoints & comma & item 2 of tPoints & comma & (item 3 of tPoints - item 1 of tPoints) & comma & (item 4 of tPoints - item 2 of tPoints) into tW["place"]
+   else if tW["kind"] is not "menu" then
+      put guiReadPlace(the rect of pObj, tBaseX, tBaseY) into tW["place"]
+      if tW["kind"] is "tabs" and the uGuiKind of pObj is "tabs" then
+         -- a built tabs widget's control is its page, which starts under the tab strip
+         put item 1 of tW["place"] & comma & (item 2 of tW["place"] - kTabHeight + 1) & comma & item 3 of tW["place"] & comma & (item 4 of tW["place"] + kTabHeight - 1) into tW["place"]
+      end if
+   end if
+   if tW["unknown"] is not empty then
+      put tType && quote & tName & quote && tW["place"] && tW["unknown"] into tW["unknown"]
+      if tIn is not empty and tIn is not "menubar" then put " (in=" & tIn & ")" after tW["unknown"]
+      return tW
+   end if
+   if tIn is not "menubar" then guiOptPut tW, "in", tIn
+   if the uGuiKind of pObj is not empty then
+      guiOptPut tW, "tab", the uGuiTab of pObj
+   else if word 1 of pObj is "group" and pTabsA[the short name of pObj] is not empty then
+      guiOptPut tW, "tab", pTabsA[the short name of pObj]
+   else
+      if the tooltip of pObj is not empty then guiOptPut tW, "tip", the tooltip of pObj
+      if the visible of pObj is false then guiOptPut tW, "x-visible", "false"
+      if the enabled of pObj is false then guiOptPut tW, "x-enabled", "false"
+   end if
+   return tW
+end guiReadOne
+
+-- left,top,right,bottom -> x,y,w,h counted from pX,pY
+private function guiReadPlace pRect, pX, pY
+   set the itemDelimiter to comma
+   return (item 1 of pRect - pX) & comma & (item 2 of pRect - pY) & comma & (item 3 of pRect - item 1 of pRect) & comma & (item 4 of pRect - item 2 of pRect)
+end guiReadPlace
+
+-- a control Gui.Build made: its kind and options are on it; its label and value are read now
+private function guiReadBuilt pObj
+   local tW, tKind, tValue
+   put the uGuiKind of pObj into tKind
+   put tKind into tW["kind"]
+   put empty into tW["optkeys"]
+   guiReadOpts tW, the uGuiOptions of pObj
+   put empty into tValue
+   switch tKind
+      case "label"
+         put guiReadClean(the text of pObj) into tW["label"]
+         break
+      case "button"
+      case "toggle"
+         put guiReadClean(the label of pObj) into tW["label"]
+         if tKind is "toggle" and the hilite of pObj then put "true" into tValue
+         break
+      case "choice"
+         put guiReadItems(the text of pObj) into tW["label"]
+         put the label of pObj into tValue
+         break
+      case "list"
+         put guiReadItems(the text of pObj) into tW["label"]
+         put guiValueOf(pObj) into tValue
+         break
+      case "field"
+      case "text"
+         put guiValueOf(pObj) into tValue
+         if the number of lines of tValue > 1 then
+            put the number of lines of tValue && "lines of text in" && quote & the uGuiName of pObj & quote && "not carried (a .gui line holds one)" into tW["note"]
+            put empty into tValue
+         end if
+         break
+      case "menu"
+         put guiReadItems(the text of pObj) into tW["label"]
+         break
+      case "panel"
+         put guiReadClean(the uGuiLabel of pObj) into tW["label"]
+         break
+      case "slider"
+         put guiSliderGet(pObj) into tValue
+         break
+      case "tabs"
+         put guiReadItems(the uGuiItems of pObj) into tW["label"]
+         put the uGuiValue of pObj into tValue
+         break
+      case "view"
+         put guiReadClean(the label of pObj) into tW["label"]
+         break
+   end switch
+   if tKind is among the words of "toggle choice list field text slider tabs" then
+      guiOptPut tW, "value", tValue
+   end if
+   return tW
+end guiReadBuilt
+
+-- a control laid out by hand: its kind from its type and style
+private function guiReadHand pObj, pIn
+   local tW, tType, tStyle, tText, tLabel
+   put word 1 of pObj into tType
+   put empty into tW["optkeys"]
+   switch tType
+      case "button"
+         put the style of pObj into tStyle
+         put the label of pObj into tLabel
+         if tLabel is empty then put the short name of pObj into tLabel
+         put guiReadClean(tLabel) into tLabel
+         if tStyle is "checkbox" or tStyle is "radioButton" then
+            put "toggle" into tW["kind"]
+            put tLabel into tW["label"]
+            if the hilite of pObj then guiOptPut tW, "value", "true"
+            if tStyle is "radioButton" then
+               guiOptPut tW, "x-style", "radio"
+            end if
+         else if tStyle is "menu" then
+            guiReadMenu pObj, pIn, tW
+         else
+            put "button" into tW["kind"]
+            put tLabel into tW["label"]
+         end if
+         break
+      case "field"
+         guiReadField pObj, tW
+         break
+      case "scrollbar"
+         if the style of pObj is "scale" then
+            put "slider" into tW["kind"]
+            guiOptPut tW, "min", guiReadNumber(the startValue of pObj)
+            guiOptPut tW, "max", guiReadNumber(the endValue of pObj)
+            guiOptPut tW, "value", guiReadNumber(the thumbPosition of pObj)
+         else
+            put the style of pObj && "scrollbar (only a scale scrollbar is a slider)" into tW["unknown"]
+         end if
+         break
+      case "graphic"
+         put the style of pObj into tStyle
+         if tStyle is "line" and the number of lines of the points of pObj is 2 then
+            put "line" into tW["kind"]
+         else if tStyle is among the words of "rectangle roundRect" and the showName of pObj then
+            put "view" into tW["kind"]
+            put the label of pObj into tLabel
+            if tLabel is empty then put the short name of pObj into tLabel
+            put guiReadClean(tLabel) into tW["label"]
+         else
+            put tStyle && "graphic (a drawing: no kind for it)" into tW["unknown"]
+         end if
+         break
+      case "group"
+         put "panel" into tW["kind"]
+         if the showName of pObj then put guiReadClean(the label of pObj) into tW["label"]
+         break
+      default
+         put tType && "(no kind for it)" into tW["unknown"]
+   end switch
+   return tW
+end guiReadHand
+
+-- a scrollbar's number (this engine reads a startValue of 0 as empty)
+private function guiReadNumber pValue
+   if the number of chars of pValue is 0 then return 0
+   return pValue
+end guiReadNumber
+
+-- a menu button: an option menu is a choice, a tabbed one tabs, a pulldown in the menu bar a menu
+private command guiReadMenu pObj, pIn, @xW
+   local tMode, tItems
+   put the menuMode of pObj into tMode
+   put guiReadItems(the text of pObj) into tItems
+   switch tMode
+      case "option"
+      case "comboBox"
+         put "choice" into xW["kind"]
+         put tItems into xW["label"]
+         guiOptPut xW, "value", the label of pObj
+         if tMode is "comboBox" then guiOptPut xW, "x-style", "combo"
+         break
+      case "tabbed"
+         put "tabs" into xW["kind"]
+         put tItems into xW["label"]
+         if the menuHistory of pObj is an integer then
+            guiOptPut xW, "value", line (the menuHistory of pObj) of the text of pObj
+         end if
+         break
+      case "pulldown"
+         if pIn is "menubar" then
+            put "menu" into xW["kind"]
+            put tItems into xW["label"]
+         else
+            put "pulldown menu outside the menu bar:" && tItems into xW["unknown"]
+         end if
+         break
+      default
+         put tMode && "menu:" && tItems into xW["unknown"]
+   end switch
+end guiReadMenu
+
+-- a field: a list, words (a label), one line to type (field) or many (text)
+private command guiReadField pObj, @xW
+   local tText, tLines
+   put the text of pObj into tText
+   if char -1 of tText is return then delete char -1 of tText
+   put the number of lines of tText into tLines
+   if the listBehavior of pObj then
+      put "list" into xW["kind"]
+      put guiReadItems(tText) into xW["label"]
+      if the hilitedLines of pObj is not empty then
+         guiOptPut xW, "value", line (item 1 of the hilitedLines of pObj) of tText
+      end if
+      exit guiReadField
+   end if
+   if the lockText of pObj and tLines <= 1 and not the vScrollbar of pObj then
+      put "label" into xW["kind"]
+      put guiReadClean(tText) into xW["label"]
+      exit guiReadField
+   end if
+   if the vScrollbar of pObj or the height of pObj > 40 or tLines > 1 then
+      put "text" into xW["kind"]
+   else
+      put "field" into xW["kind"]
+   end if
+   if the lockText of pObj then guiOptPut xW, "x-readonly", "true"
+   if tLines > 1 then
+      put tLines && "lines of text in" && quote & the short name of pObj & quote && "not carried (a .gui line holds one)" into xW["note"]
+   else
+      guiOptPut xW, "value", tText
+   end if
+end guiReadField
