@@ -1,4 +1,4 @@
-# read out of stack "Status_Browser" by Gui.FromStack: 7 widgets, 1 unknown, 1 notes
+# read out of stack "Status_Browser" by Gui.FromStack: 8 widgets, 0 unknown, 1 notes
 # not carried: scripts (5 controls, the stack: 267 lines)
 gui	1
 window	Status_Browser	572,401	Status_Browser
@@ -10,4 +10,4 @@ label	Label Field	235,131,245,21	Feedback
 button	Submit	486,132,82,18	Submit
 button	Refresh	1,3,82,18	Refresh
 button	TellClaude	86,3,94,18	Tell Claude
-# unknown: button "ReviewMenu" 222,185,128,32 popup menu: Reviewed|Not Reviewed|-|Open in Explorer|Copy Path
+popup	ReviewMenu	Reviewed|Not Reviewed|-|Open in Explorer|Copy Path

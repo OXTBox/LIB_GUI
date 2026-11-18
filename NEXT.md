@@ -1,6 +1,6 @@
 # LIB_GUI: where it stands
 
-Monday, November 17, 2026. Written by Claude (Opus 5.5, a helper), on the branch gui-step1; stage 3 and Gui.FromStack added 18 Nov.
+Monday, November 17, 2026. Written by Claude (Opus 5.5, a helper), on the branch gui-step1; stage 3, Gui.FromStack and the `popup` kind added 18 Nov.
 
 ## Done
 
@@ -17,7 +17,8 @@ Stages 1 and 2 of PLAN.md section 7, the first working slice, in `livecode/lib_g
 | Examples | `gui/status_browser.gui` (the plan's example), `gui/notes.gui` (one of every kind drawn) |
 | Look fixes (18 Nov) | dark theme: `choice` and `menu` are light text on the panel colour when closed and turn to dark text while their list is open (`Gui.MenuOpen` / `Gui.MenuRest`: LIB_THEME's menu rule for the light list); the menu strip is a dark bar; a `list`'s selected line is white on the hilite colour (`Gui.ListMark`; a theme key `hiliteText` overrides); `hint=` shows dimmed in an empty `field` or `text` and goes when it is entered (`Gui.HintOff` / `Gui.HintOn`), `Gui.Get` gives empty under it |
 | Stage 3 (18 Nov) | `panel slider tabs view` and `stick=` (below) |
-| Test | `OXT-BEYOND/tests/t41_lib_gui.txt`: 221 checks (51 for `Gui.FromStack`), all pass on both engines, no window needed (the old "menu rule" check now reads the menu's list colour, `uGuiListText`, since the closed button is light text; the old "slider not drawn" check now uses a made-up kind) |
+| Popup (18 Nov) | `popup`: a right-click menu (below) |
+| Test | `OXT-BEYOND/tests/t41_lib_gui.txt`: 251 checks (51 for `Gui.FromStack`, 30 for `popup`), all pass on both engines (`python3 -I oxt_headless.py --engine both t41_lib_gui.txt`), no window needed (the old "menu rule" check now reads the menu's list colour, `uGuiListText`, since the closed button is light text; the old "slider not drawn" check now uses a made-up kind) |
 
 ### Stage 3: what the new kinds do
 
@@ -27,6 +28,29 @@ Stages 1 and 2 of PLAN.md section 7, the first working slice, in `livecode/lib_g
 | `slider` | a scale scrollbar from `min=` to `max=` (0 to 100 if not given), starting at `value=` | the number; whole numbers, unless `min` or `max` has a decimal point (`min=-1.0`) | once when the mouse lets go |
 | `tabs` | drawn tabs (LIB_THEME's tab rule: never the native tab control) on a page. A widget with `tab=<tabs>:<item>` shows only while that tab is picked | the picked tab; Set picks one (no message) | once a click on a tab |
 | `view` | a placeholder: a dark box with its label in the middle. It is where an app will draw (the 3D picture, a map); nothing is drawn in it yet | Get gives its rect now (it moves with `stick=`); Set changes its words | a click, with the point inside it (`x,y`) |
+
+### The popup kind (18 Nov): right-click menus
+
+```
+popup	whoMenu	Copy name|-|Clear	on=who
+popup	ReviewMenu	Reviewed|Not Reviewed|-|Open in Explorer|Copy Path	on=list	do=ReviewPicked	end=true
+```
+
+Written like `menu`: the name, then the items (`|` between them, `-` a separator). No place is needed (it opens
+at the mouse); one given is used for its hidden button and not read back.
+
+| | |
+|---|---|
+| `on=<widget>` | a right-click on that widget opens it; on a widget in a panel, a popup `on=` the panel opens too. Without `on=`: a right-click on anything no other popup claims (the card too). An `on=` naming no widget of the file is noted in `Gui.Problems()` |
+| `end=true` | when LIB_MENU is in use, LIB_MENU's ending (`Menu.WithEnd`: Leave comment..., Explore here..., Minimize) comes after the items; picking one of those goes to `Menu.EndPick` (target: the `on=` widget, else the card), never to `guiDo`. Without LIB_MENU: no ending, and a note in `Gui.Problems()` |
+| `do=` | as for every kind: the message gets the item instead of `guiDo name, item` |
+| What is built | a hidden button, style menu, menuMode popup, coloured by the menu rule (dark `menuText` on the light `menuFace`: it is only ever seen open). The card gets `on mouseDown pButton` calling `Gui.PopupClick pButton, the long id of the target` (a card script with its own mouseDown is left alone and noted: call it there). Tabs now pass a right-click on |
+| `Gui.Popup name` | shows it at the mouse from script (returns why not, e.g. no screen, or "is off") |
+| `Gui.PopupClick pButton, pTarget` | what the card calls: opens the right popup for a button-3 click; returns its name |
+| `Gui.Get` / `Gui.Set` | Get: the last item picked (empty before one). Set: new items (`\|` or lines between them; the ending is added again) |
+| `Gui.Show` / `Gui.Enable` false | the popup is off: it stays hidden and does not open |
+| `Gui.FromStack` | a popup-menu button becomes `popup name items`, no place; a built one keeps `on=`, `do=`, `end=` (its items without the ending). A hand-laid one gets no `on=` (the owner's Status Browser pops it from the stack script, `SB.RightClicked`): add `on=` by hand |
+| `Gui.LastPopup()` | the last popup asked for, a tab, and shown / off / not shown (for tests: headless there is no screen, `popup` throws, and it says "not shown") |
 
 `stick=`: a built window lays itself out again when it is resized (a `resizeStack` handler is
 added to its script; an app script with its own `resizeStack` should call `Gui.Resize pNewWidth, pNewHeight`).
@@ -67,7 +91,8 @@ reads the stack, with messages locked, and sets nothing on it.
 | line graphic; rectangle showing its name | `line`; `view` |
 | group | `panel` (its controls get `in=` and places counted from it) |
 | tooltip, hidden, greyed (hand controls) | `tip=`, `x-visible=false`, `x-enabled=false` |
-| popup menu, plain scrollbar, other graphics, images, players, widgets | a `# unknown: ...` comment line with its type, name, place and items (also in `Gui.Problems()`) |
+| popup menu | `popup` (items; no place, no `on=`: add it by hand) |
+| plain scrollbar, other graphics, images, players, widgets | a `# unknown: ...` comment line with its type, name, place and items (also in `Gui.Problems()`) |
 | a field with many lines | its text is not carried (a `.gui` line holds one): a `# note:` line says so |
 
 Names are made unique (`dup`, `dup_2`). The window's title keeps only its words ("FOR OWNER | Notes" gives
@@ -78,8 +103,8 @@ value and option comes back as the file had it; built again, every control is in
 value, and reading the second window gives the same text.
 
 The owner's Status Browser (`LIB_DEV/livecode/Status_Browser_gui_For_edits.livecode`, read from a copy):
-`gui/status_browser_from_stack.gui`. 7 of 8 controls mapped; the popup menu `ReviewMenu` is an unknown line
-(no popup kind yet); the 6 lines of `LLMNote` are not carried. The list carries the file names it held
+`gui/status_browser_from_stack.gui`. All 8 controls mapped (regenerated 18 Nov from a copy: `ReviewMenu` is now a
+`popup` line, with no `on=`: his script pops it up from the list's right-click); the 6 lines of `LLMNote` are not carried. The list carries the file names it held
 when saved.
 
 ## Not done yet (on purpose)
@@ -95,8 +120,12 @@ when saved.
 - `key=`, `float=`, `may=` are noted as "not done yet" in `Gui.Problems()`.
 - No About card on built stacks yet (rule 17).
 - The XTJSON importer (`tools/gui_from_xtjson.py`, the rest of stage 3), the GUI Builder: later stages.
-- `Gui.FromStack` has no `popup` kind (a right-click menu): such menus are `# unknown` lines. A question for
-  the owner: should `.gui` get a `popup` kind (`popup name items`, shown by `Gui.Popup name`)?
+- To check on screen (not testable headless: `popup` needs a screen): does a right-click on the Notes list
+  (`who`) open `whoMenu` at the mouse, dark text on light, and does picking an item reach `guiDo`? Does a
+  right-click in a `field`/`text` (unlocked) open its popup on Windows? A `choice` or `menu` may open its own
+  list on a right-click instead.
+- `popup` cascades (submenus) and checkmarks are not done: the items are passed as written, so LIB_MENU-style
+  menu text (`!c`, tab-indented submenus) is untested.
 - Stick (resizing) of hand-laid windows is not read (the IDE's Geometry Manager keeps it in its own way): add `stick=` by hand.
 - One small change from the plan: widgets live under `tLayoutA["widget"][name]` instead of straight
   under the layout, so a widget may be called "order" or "gui".

@@ -27,6 +27,14 @@ script "lib_gui"
 ##   view    an empty rectangle the app draws in (the 3D picture, a map): here a placeholder face,
 ##           a dark box with its label in the middle. Gui.Get gives its rect now; a click fires
 ##           with the point inside it (x,y)
+##   popup   a right-click menu (18 Nov): popup <name> <items>, on=<widget> (a right-click on that
+##           widget, or on anything in that panel, opens it; without on=, a right-click anywhere
+##           on the window that no other popup claims). A hidden popup-menu button, menu-rule
+##           colours. Picking an item fires guiDo name, item (or do=). Gui.Popup name shows it
+##           from script; Gui.Get gives the last item picked; Gui.Set gives it new items.
+##           end=true adds LIB_MENU's ending (Leave comment..., Explore here..., Minimize) when
+##           LIB_MENU is in use; picking one of those goes to Menu.EndPick, never to guiDo.
+##           The built card gets a mouseDown handler that calls Gui.PopupClick.
 ## Native look (dark theme): menus and choices are dark with light text when closed and switch to
 ## dark text while their list is open (LIB_THEME's menu rule); a list's selected line is light
 ## text on the hilite colour; a field's hint= shows dimmed while it is empty (Gui.Get gives empty).
@@ -41,10 +49,10 @@ script "lib_gui"
 ## sketched) so a widget may be called "order" or "gui".
 ######################################################################################
 
-constant kKinds = "window panel label button toggle choice list field text slider tabs menu view line"
-constant kNativeKinds = "window panel label button toggle choice list field text slider tabs menu view line"
+constant kKinds = "window panel label button toggle choice list field text slider tabs menu view line popup"
+constant kNativeKinds = "window panel label button toggle choice list field text slider tabs menu view line popup"
 constant kTabHeight = 24
-constant kOptions = "do tip hint stick in tab value min max key may theme float glyph"
+constant kOptions = "do tip hint stick in tab value min max key may theme float glyph on end"
 constant kMenuBarHeight = 28
 
 local sProblems   -- what the last read found wrong, one a line; the native face adds its own
@@ -52,6 +60,7 @@ local sStack      -- long id of the window Gui.Get / Set / Show / Enable act on
 local sFace       -- the face in use: "native" (the only one in this file)
 local sLastFired  -- the last use a face reported: name & tab & value & tab & message
 local sInGroup    -- while building: the short id of the panel (group) new controls go in
+local sLastPopup  -- the last popup Gui.Popup was asked to show: name & tab & what came of it
 
 ## ---------------------------------------------------------------------------------
 ## The format
@@ -150,6 +159,14 @@ function Gui.Parse pText
          guiProblem tLayoutA["widget"][tName]["line"], quote & tName & quote && "is tab=" & tIn & ":" && tWhy & ": always shown"
       end if
    end repeat
+   -- on= (a popup's widget) must name a widget of this file
+   repeat for each line tName in tLayoutA["order"]
+      put tLayoutA["widget"][tName]["opt"]["on"] into tIn
+      if tIn is empty then next repeat
+      if tLayoutA["widget"][tIn]["kind"] is empty or tLayoutA["widget"][tIn]["kind"] is "window" then
+         guiProblem tLayoutA["widget"][tName]["line"], quote & tName & quote && "is on=" & tIn & ", which is not a widget of this file: a right-click anywhere opens it"
+      end if
+   end repeat
    return tLayoutA
 end Gui.Parse
 
@@ -232,7 +249,7 @@ private command guiNotes pLine, pName, pWidgetA
    local tKey
    if pWidgetA["kind"] is not among the words of kKinds then
       guiProblem pLine, "unknown kind" && quote & pWidgetA["kind"] & quote && "(" & pName & "): kept, faces skip it"
-   else if pWidgetA["place"] is empty and pWidgetA["kind"] is not among the words of "window menu" then
+   else if pWidgetA["place"] is empty and pWidgetA["kind"] is not among the words of "window menu popup" then
       guiProblem pLine, quote & pName & quote && "has no place: faces put it at the top left"
    end if
    repeat for each line tKey in pWidgetA["optkeys"]
@@ -425,6 +442,7 @@ command Gui.Build pLayoutA, pStack, pScript
       end if
    end repeat
    put empty into sInGroup
+   guiPopupCard tCard, pLayoutA
    guiKeepRects tCard
    Theme.ApplyStack pStack
    guiAfterTheme tCard
@@ -777,6 +795,21 @@ private command guiMake pName, pWidgetA
          set the uThemeSkip of tObj to true
          put "on mouseUp" & return & "   Gui.ViewClick the long id of me" & return & "end mouseUp" into tScript
          break
+      case "popup"
+         put guiNew("button", pName) into tObj
+         set the style of tObj to "menu"
+         set the menuMode of tObj to "popup"
+         set the rect of tObj to tRect
+         set the visible of tObj to false
+         set the uGuiOn of tObj to pWidgetA["opt"]["on"]
+         set the uGuiEnd of tObj to (pWidgetA["opt"]["end"] is true)
+         set the uGuiValue of tObj to empty
+         guiPopupItems tObj, tLabel
+         if pWidgetA["opt"]["end"] is true and not guiHasMenuLib() then
+            guiProblem pWidgetA["line"], "native: end=true needs LIB_MENU in use: no ending (" & pName & ")"
+         end if
+         put "on menuPick pItem" & return & "   Gui.PopupPick the long id of me, pItem" & return & "end menuPick" into tScript
+         break
    end switch
    if tScript is not empty then set the script of tObj to tScript
    guiTag tObj, tKind, pName, pWidgetA
@@ -912,7 +945,7 @@ private function guiMakeTabs pName, pRect, pLabel, pValue
    put 1 into n
    repeat while there is a field ("tab_" & pName & "_" & n)
       put the long id of field ("tab_" & pName & "_" & n) into tF
-      set the script of tF to "on mouseDown" & return & "   Gui.TabPick the long id of me" & return & "end mouseDown"
+      set the script of tF to "on mouseDown pButton" & return & "   if pButton is 3 then pass mouseDown" & return & "   Gui.TabPick the long id of me" & return & "end mouseDown"
       guiPart tF, "tab", pName, "left,top"
       add 1 to n
    end repeat
@@ -984,6 +1017,11 @@ private command guiAfterTheme pCard
          if tKind is "menu" then
             set the showBorder of tObj to false
          end if
+      else if tKind is "popup" then
+         -- only ever seen open: always the menu rule, dark text on the light list
+         set the uGuiListText of tObj to Theme.Get("menuText")
+         set the foregroundColor of tObj to Theme.Get("menuText")
+         set the backgroundColor of tObj to Theme.Get("menuFace")
       end if
    end repeat
    if there is a graphic "Theme.MenuBar" of pCard then
@@ -1092,7 +1130,7 @@ command Gui.Fire pObj, pValue
    put the uGuiName of pObj into tName
    put the uGuiKind of pObj into tKind
    put the uGuiDo of pObj into tDo
-   if tKind is not among the words of "menu choice view" then put guiValueOf(pObj) into pValue
+   if tKind is not among the words of "menu choice view popup" then put guiValueOf(pObj) into pValue
    if tKind is among the words of "field text" then
       if ("s" & the uGuiSent of pObj) is ("s" & pValue) then exit Gui.Fire
       set the uGuiSent of pObj to pValue
@@ -1159,6 +1197,8 @@ private function guiValueOf pObj
          return the uGuiValue of pObj
       case "view"
          return the rect of pObj
+      case "popup"
+         return the uGuiValue of pObj
    end switch
    return empty
 end guiValueOf
@@ -1234,6 +1274,10 @@ command Gui.Set pName, pValue
       case "view"
          set the label of tObj to pValue
          break
+      case "popup"
+         replace return with "|" in pValue
+         guiPopupItems tObj, pValue
+         break
    end switch
    unlock messages
    return empty
@@ -1243,6 +1287,11 @@ command Gui.Show pName, pFlag
    local tObj
    put guiControl(pName) into tObj
    if tObj is empty then return "no widget" && quote & pName & quote
+   if the uGuiKind of tObj is "popup" then
+      -- a popup's button is never shown: hiding it stops it opening
+      set the enabled of tObj to (pFlag is not false)
+      return empty
+   end if
    set the visible of tObj to (pFlag is not false)
    if the uGuiKind of tObj is "tabs" then
       guiTabParts tObj, "visible", (pFlag is not false)
@@ -1259,6 +1308,139 @@ command Gui.Enable pName, pFlag
       guiTabParts tObj, "enabled", (pFlag is not false)
    end if
 end Gui.Enable
+
+## ---------------------------------------------------------------------------------
+## Popups: right-click menus
+## ---------------------------------------------------------------------------------
+
+-- the built card answers a right-click (once a window has a popup): its mouseDown calls
+-- Gui.PopupClick. A card script with its own mouseDown is left alone (and noted): call
+-- Gui.PopupClick pButton, the long id of the target in it
+private command guiPopupCard pCard, pLayoutA
+   local tName, tHas, tScript
+   put false into tHas
+   repeat for each line tName in pLayoutA["order"]
+      if pLayoutA["widget"][tName]["kind"] is "popup" then put true into tHas
+   end repeat
+   if not tHas then exit guiPopupCard
+   put the script of pCard into tScript
+   if tScript contains "Gui.PopupClick" then exit guiPopupCard
+   if tScript contains "on mouseDown" then
+      guiProblem 0, "native: the card has its own mouseDown: call Gui.PopupClick pButton, the long id of the target in it for right-click menus"
+      exit guiPopupCard
+   end if
+   if tScript is not empty then put return after tScript
+   put "on mouseDown pButton" & return & "   Gui.PopupClick pButton, the long id of the target" & return \
+         & "   pass mouseDown" & return & "end mouseDown" after tScript
+   set the script of pCard to tScript
+end guiPopupCard
+
+private function guiHasMenuLib
+   return "LIB_MENU" is among the lines of the stacksInUse
+end guiHasMenuLib
+
+-- a popup's items ("|" between them); with end=true and LIB_MENU in use, its ending after them
+private command guiPopupItems pObj, pItems
+   local tText
+   set the uGuiItems of pObj to pItems
+   put guiItems(pItems) into tText
+   if the uGuiEnd of pObj is true and guiHasMenuLib() then
+      put Menu.WithEnd(tText) into tText
+   end if
+   set the text of pObj to tText
+end guiPopupItems
+
+-- shows a popup at the mouse (from script, or a right-click). Returns empty, or why not
+command Gui.Popup pName
+   local tObj, tErr
+   put guiControl(pName) into tObj
+   if tObj is empty then return "no widget" && quote & pName & quote
+   if the uGuiKind of tObj is not "popup" then return quote & pName & quote && "is not a popup"
+   if the enabled of tObj is false then
+      put pName & tab & "off" into sLastPopup
+      return quote & pName & quote && "is off (Gui.Show or Gui.Enable false)"
+   end if
+   put pName & tab & "shown" into sLastPopup
+   Gui.MenuOpen tObj
+   try
+      popup tObj
+   catch tErr
+      -- no screen (a headless test run): nothing to show it on
+      put pName & tab & "not shown:" && item 1 of line 1 of tErr into sLastPopup
+      return "could not show" && quote & pName & quote && "(no screen?)"
+   end try
+   return empty
+end Gui.Popup
+
+-- the last popup asked for: name, then (a tab between) shown / off / not shown: for tests
+function Gui.LastPopup
+   return sLastPopup
+end Gui.LastPopup
+
+-- a mouse down on the built card: a right-click (pButton 3) on a widget opens the popup whose
+-- on= names it, or names a panel it is in, or else the popup with no on=. Returns its name
+command Gui.PopupClick pButton, pTarget
+   local tCard, tObj, tWant, tName, n, tGot, tAny
+   if pButton is not 3 then return empty
+   if pTarget is empty or not exists(pTarget) then return empty
+   put pTarget into tObj
+   repeat 20 times
+      if word 1 of tObj is "card" or word 1 of tObj is "stack" then exit repeat
+      if the uGuiPart of tObj is not empty then
+         put the uGuiAnchor of tObj & return after tWant
+      else if the uGuiName of tObj is not empty then
+         put the uGuiName of tObj & return after tWant
+      end if
+      put the long id of the owner of tObj into tObj
+   end repeat
+   if word 1 of tObj is "stack" then return empty
+   put tObj into tCard
+   put guiStackOf(tCard) into sStack
+   repeat for each line tName in tWant
+      repeat with n = 1 to the number of buttons of tCard
+         if the uGuiKind of button n of tCard is "popup" and the uGuiOn of button n of tCard is tName then
+            put the uGuiName of button n of tCard into tGot
+            exit repeat
+         end if
+      end repeat
+      if tGot is not empty then exit repeat
+   end repeat
+   if tGot is empty then
+      repeat with n = 1 to the number of buttons of tCard
+         if the uGuiKind of button n of tCard is "popup" and the uGuiOn of button n of tCard is empty then
+            put the uGuiName of button n of tCard into tAny
+            exit repeat
+         end if
+      end repeat
+      put tAny into tGot
+   end if
+   if tGot is empty then return empty
+   Gui.Popup tGot
+   return tGot
+end Gui.PopupClick
+
+-- an item was picked: LIB_MENU's ending goes to Menu.EndPick (with the on= widget as the
+-- target); anything else is the popup's value and fires guiDo name, item (or do=)
+command Gui.PopupPick pObj, pItem
+   local tOn, tTarget
+   Gui.MenuRest pObj
+   if the uGuiEnd of pObj is true and guiHasMenuLib() then
+      if Menu.IsEnd(pItem) then
+         put the uGuiOn of pObj into tOn
+         put the long id of the owner of pObj into tTarget
+         repeat while word 1 of tTarget is "group"
+            put the long id of the owner of tTarget into tTarget
+         end repeat
+         if tOn is not empty and there is a control tOn of tTarget then
+            put the long id of control tOn of tTarget into tTarget
+         end if
+         Menu.EndPick pItem, tTarget, pObj
+         exit Gui.PopupPick
+      end if
+   end if
+   set the uGuiValue of pObj to pItem
+   Gui.Fire pObj, pItem
+end Gui.PopupPick
 
 ## ---------------------------------------------------------------------------------
 ## Tabs and views
@@ -1301,6 +1483,7 @@ private command guiTabShow pPage, pItem
       put the long id of control n of tCard into tObj
       put the uGuiTab of tObj into tTab
       if tTab is empty or ":" is not in tTab then next repeat
+      if the uGuiKind of tObj is "popup" then next repeat
       if char 1 to offset(":", tTab) - 1 of tTab is not tName then next repeat
       put char offset(":", tTab) + 1 to -1 of tTab into tTab
       put (tTab is pItem) into tOn
@@ -1636,7 +1819,8 @@ private function guiReadOne pObj, pNamesA, pTabsA, pBar
       put the points of pObj into tPoints
       put guiShift(line 1 of tPoints & comma & line -1 of tPoints, 0 - tBaseX, 0 - tBaseY) into tPoints
       put item 1 of tPoints & comma & item 2 of tPoints & comma & (item 3 of tPoints - item 1 of tPoints) & comma & (item 4 of tPoints - item 2 of tPoints) into tW["place"]
-   else if tW["kind"] is not "menu" then
+   else if tW["kind"] is not among the words of "menu popup" then
+      -- (a popup opens at the mouse: where its hidden button sits is not carried)
       put guiReadPlace(the rect of pObj, tBaseX, tBaseY) into tW["place"]
       if tW["kind"] is "tabs" and the uGuiKind of pObj is "tabs" then
          -- a built tabs widget's control is its page, which starts under the tab strip
@@ -1655,7 +1839,7 @@ private function guiReadOne pObj, pNamesA, pTabsA, pBar
       guiOptPut tW, "tab", pTabsA[the short name of pObj]
    else
       if the tooltip of pObj is not empty then guiOptPut tW, "tip", the tooltip of pObj
-      if the visible of pObj is false then guiOptPut tW, "x-visible", "false"
+      if the visible of pObj is false and tW["kind"] is not "popup" then guiOptPut tW, "x-visible", "false"
       if the enabled of pObj is false then guiOptPut tW, "x-enabled", "false"
    end if
    return tW
@@ -1715,6 +1899,10 @@ private function guiReadBuilt pObj
          break
       case "view"
          put guiReadClean(the label of pObj) into tW["label"]
+         break
+      case "popup"
+         -- its own items (not LIB_MENU's ending); the last item picked is not carried
+         put guiReadClean(the uGuiItems of pObj) into tW["label"]
          break
    end switch
    if tKind is among the words of "toggle choice list field text slider tabs" then
@@ -1790,7 +1978,8 @@ private function guiReadNumber pValue
    return pValue
 end guiReadNumber
 
--- a menu button: an option menu is a choice, a tabbed one tabs, a pulldown in the menu bar a menu
+-- a menu button: an option menu is a choice, a tabbed one tabs, a pulldown in the menu bar a menu,
+-- a popup a popup (with no on=: the handler that pops it up is a script, not carried)
 private command guiReadMenu pObj, pIn, @xW
    local tMode, tItems
    put the menuMode of pObj into tMode
@@ -1817,6 +2006,10 @@ private command guiReadMenu pObj, pIn, @xW
          else
             put "pulldown menu outside the menu bar:" && tItems into xW["unknown"]
          end if
+         break
+      case "popup"
+         put "popup" into xW["kind"]
+         put tItems into xW["label"]
          break
       default
          put tMode && "menu:" && tItems into xW["unknown"]
