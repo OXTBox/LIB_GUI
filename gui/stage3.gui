@@ -1,0 +1,20 @@
+# Stage 3: panels, sliders, tabs, a view, and stick= (drag the window's corner: things follow).
+# Build it:  Gui.Build Gui.Load(<this file>), "Stage3"   then   go stack "Stage3"
+gui	1
+window	Stage3	560,440	Stage 3: tabs, panels, sliders	theme=dark	min=420,340
+menu	File	Reset|-|Close
+tabs	pages	8,34,544,352	Look|Sound	value=Look	stick=left,top,right,bottom
+panel	look	16,66,528,312	tab=pages:Look	stick=left,top,right,bottom
+label	zoomWords	12,12,60,20	Zoom	in=look
+slider	zoom	76,10,300,24	min=1	max=10	value=4	in=look	stick=left,top,right	tip=How near the camera is
+toggle	grid	392,10,120,24	Show grid	value=true	in=look	stick=right,top
+view	scene	12,44,504,256	3D view: the app draws here	in=look	stick=left,top,right,bottom
+panel	sound	16,66,528,312	Sound	tab=pages:Sound	stick=left,top,right,bottom
+label	volumeWords	12,36,60,20	Volume	in=sound
+slider	volume	76,34,300,24	min=0	max=100	value=70	in=sound	stick=left,top,right
+toggle	mute	12,70,120,24	Mute	in=sound
+panel	extra	12,108,504,190	Mixer	in=sound	stick=left,top,right,bottom
+label	balanceWords	12,32,60,20	Balance	in=extra
+slider	balance	76,30,300,24	min=-1.0	max=1.0	value=0	in=extra	stick=left,top,right
+field	status	8,400,436,28	stick=left,right,bottom	hint=Click the view, move a slider, change tabs
+button	ok	452,400,100,28	OK	stick=right,bottom	do=Stage3OK
