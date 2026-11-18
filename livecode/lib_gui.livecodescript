@@ -13,6 +13,9 @@ script "lib_gui"
 ##   Gui.Set "note", "hello"  /  put Gui.Get("note") into tNote
 ##   Gui.Show "save", false   /  Gui.Enable "save", false
 ##   on guiDo pName, pValue  ... end guiDo            in the window's script: a widget was used
+## Native look (dark theme): menus and choices are dark with light text when closed and switch to
+## dark text while their list is open (LIB_THEME's menu rule); a list's selected line is light
+## text on the hilite colour; a field's hint= shows dimmed while it is empty (Gui.Get gives empty).
 ## The layout array:
 ##   tLayoutA["gui"]                     the format's number (1)
 ##   tLayoutA["order"]                   the widget names, one a line, in file order
@@ -464,7 +467,7 @@ private command guiMakeMenu pName, pWidgetA, pX
    set the text of tB to guiItems(pWidgetA["label"])
    put max(48, 9 * the number of chars of pName + 20) into tW
    set the rect of tB to pX, 2, pX + tW, kMenuBarHeight - 2
-   set the script of tB to "on menuPick pItem" & return & "   Gui.Fire the long id of me, pItem" & return & "end menuPick"
+   set the script of tB to guiMenuScript()
    guiTag tB, "menu", pName, pWidgetA
    return tW
 end guiMakeMenu
@@ -516,7 +519,7 @@ private command guiMake pName, pWidgetA
          else
             set the menuHistory of tObj to 1
          end if
-         put "on menuPick pItem" & return & "   Gui.Fire the long id of me, pItem" & return & "end menuPick" into tScript
+         put guiMenuScript() into tScript
          break
       case "list"
          create field pName
@@ -530,7 +533,8 @@ private command guiMake pName, pWidgetA
          if tValue is not empty and tValue is among the lines of the text of tObj then
             set the hilitedLines of tObj to lineOffset(tValue, the text of tObj)
          end if
-         put "on mouseUp" & return & "   Gui.Fire the long id of me" & return & "end mouseUp" into tScript
+         put "on mouseUp" & return & "   Gui.ListMark the long id of me" & return & "   Gui.Fire the long id of me" & return & "end mouseUp" & return \
+               & "on selectionChanged" & return & "   Gui.ListMark the long id of me" & return & "end selectionChanged" into tScript
          break
       case "field"
          create field pName
@@ -543,8 +547,9 @@ private command guiMake pName, pWidgetA
          else
             set the text of tObj to tLabel
          end if
+         guiHintStart tObj, pWidgetA["opt"]["hint"]
          put "on returnInField" & return & "   Gui.Fire the long id of me" & return & "end returnInField" & return \
-               & "on closeField" & return & "   Gui.Fire the long id of me" & return & "end closeField" into tScript
+               & guiFieldScript() into tScript
          break
       case "text"
          create field pName
@@ -556,7 +561,8 @@ private command guiMake pName, pWidgetA
          else
             set the text of tObj to tLabel
          end if
-         put "on closeField" & return & "   Gui.Fire the long id of me" & return & "end closeField" into tScript
+         guiHintStart tObj, pWidgetA["opt"]["hint"]
+         put guiFieldScript() into tScript
          break
       case "line"
          create graphic pName
@@ -597,19 +603,125 @@ private command guiTag pObj, pKind, pName, pWidgetA
    end if
 end guiTag
 
--- after Theme.ApplyStack: labels are words on the page, not boxes
+-- after Theme.ApplyStack: labels are words on the page, not boxes; menus and choices dark when
+-- closed (LIB_THEME's menu rule still holds for their open list: see Gui.MenuOpen); lists show
+-- their selected line in light text; a field's hint is dimmed; the menu strip is a dark bar
 private command guiAfterTheme pCard
-   local n, tObj
+   local n, tObj, tKind
    repeat with n = 1 to the number of controls of pCard
       put the long id of control n of pCard into tObj
-      if the uGuiKind of tObj is "label" then
+      put the uGuiKind of tObj into tKind
+      if tKind is "label" then
          set the opaque of tObj to false
          set the showBorder of tObj to false
-      else if the uGuiKind of tObj is "list" or the uGuiKind of tObj is "field" or the uGuiKind of tObj is "text" then
+      else if tKind is among the words of "list field text" then
          set the opaque of tObj to true
+         set the uGuiFaceText of tObj to Theme.Get("text")
+         set the uGuiHintColor of tObj to Theme.Get("dim")
+         if tKind is "list" then
+            set the uGuiListText of tObj to guiHiliteText()
+            Gui.ListMark tObj
+         else if the uGuiHintOn of tObj is true then
+            set the foregroundColor of tObj to Theme.Get("dim")
+         end if
+      else if tKind is among the words of "menu choice" then
+         -- the menu rule: the open list is drawn on a light background in the button's text
+         -- colour, so the button is dark text only while its list is open
+         set the uGuiListText of tObj to Theme.Get("menuText")
+         set the uGuiFaceText of tObj to Theme.Get("text")
+         set the foregroundColor of tObj to Theme.Get("text")
+         set the backgroundColor of tObj to Theme.Get("panel")
+         if tKind is "menu" then
+            set the showBorder of tObj to false
+         end if
       end if
    end repeat
+   if there is a graphic "Theme.MenuBar" of pCard then
+      set the backgroundColor of graphic "Theme.MenuBar" of pCard to Theme.Get("panel")
+      set the foregroundColor of graphic "Theme.MenuBar" of pCard to Theme.Get("panel")
+   end if
 end guiAfterTheme
+
+-- the text colour of a list's selected line: the theme's hiliteText, else white
+private function guiHiliteText
+   if Theme.Get("hiliteText") is not empty then return Theme.Get("hiliteText")
+   return "255,255,255"
+end guiHiliteText
+
+private function guiMenuScript
+   return "on mouseDown" & return & "   Gui.MenuOpen the long id of me" & return & "   pass mouseDown" & return & "end mouseDown" & return \
+         & "on menuPick pItem" & return & "   Gui.MenuRest the long id of me" & return & "   Gui.Fire the long id of me, pItem" & return & "end menuPick" & return \
+         & "on mouseUp" & return & "   Gui.MenuRest the long id of me" & return & "end mouseUp" & return \
+         & "on mouseRelease" & return & "   Gui.MenuRest the long id of me" & return & "end mouseRelease"
+end guiMenuScript
+
+private function guiFieldScript
+   return "on openField" & return & "   Gui.HintOff the long id of me" & return & "end openField" & return \
+         & "on closeField" & return & "   Gui.Fire the long id of me" & return & "   Gui.HintOn the long id of me" & return & "end closeField" & return \
+         & "on exitField" & return & "   Gui.HintOn the long id of me" & return & "end exitField"
+end guiFieldScript
+
+-- a menu or choice is about to open its list: dark text for the light list (the menu rule)
+command Gui.MenuOpen pObj
+   if the uGuiListText of pObj is not empty then
+      set the foregroundColor of pObj to the uGuiListText of pObj
+   end if
+end Gui.MenuOpen
+
+-- its list closed: the theme's text colour again
+command Gui.MenuRest pObj
+   if the uGuiFaceText of pObj is not empty then
+      set the foregroundColor of pObj to the uGuiFaceText of pObj
+   end if
+end Gui.MenuRest
+
+-- a list's selected lines in light text (the field's hiliteColor is behind them)
+command Gui.ListMark pObj
+   local tLine, tColor
+   put the uGuiListText of pObj into tColor
+   if tColor is empty then exit Gui.ListMark
+   lock screen
+   set the foregroundColor of char 1 to -1 of pObj to empty
+   set the itemDelimiter to comma
+   repeat for each item tLine in the hilitedLines of pObj
+      if tLine is an integer then
+         set the foregroundColor of line tLine of pObj to tColor
+      end if
+   end repeat
+   unlock screen
+end Gui.ListMark
+
+-- a field's hint: shown (dimmed) while the field is empty and not being typed in
+private command guiHintStart pObj, pHint
+   set the uGuiHint of pObj to pHint
+   set the uGuiHintOn of pObj to false
+   if pHint is not empty and the text of pObj is empty then
+      set the text of pObj to pHint
+      set the uGuiHintOn of pObj to true
+   end if
+end guiHintStart
+
+-- typing starts (the field is entered): the hint goes
+command Gui.HintOff pObj
+   if the uGuiHintOn of pObj is not true then exit Gui.HintOff
+   set the text of pObj to empty
+   set the uGuiHintOn of pObj to false
+   if the uGuiFaceText of pObj is not empty then
+      set the foregroundColor of pObj to the uGuiFaceText of pObj
+   end if
+end Gui.HintOff
+
+-- the field is left (or set) empty: the hint comes back
+command Gui.HintOn pObj
+   if the uGuiHint of pObj is empty then exit Gui.HintOn
+   if the uGuiHintOn of pObj is true then exit Gui.HintOn
+   if the text of pObj is not empty then exit Gui.HintOn
+   set the text of pObj to the uGuiHint of pObj
+   set the uGuiHintOn of pObj to true
+   if the uGuiHintColor of pObj is not empty then
+      set the foregroundColor of pObj to the uGuiHintColor of pObj
+   end if
+end Gui.HintOn
 
 -- the stack a control is on
 private function guiStackOf pObj
@@ -681,6 +793,8 @@ private function guiValueOf pObj
          return line (item 1 of tLines) of the text of pObj
       case "field"
       case "text"
+         if the uGuiHintOn of pObj is true then return empty
+         return the text of pObj
       case "label"
          return the text of pObj
       case "button"
@@ -721,9 +835,19 @@ command Gui.Set pName, pValue
          else
             set the text of tObj to pValue
          end if
+         Gui.ListMark tObj
          break
       case "field"
       case "text"
+         if pValue is empty then
+            set the text of tObj to empty
+            set the uGuiHintOn of tObj to false
+            Gui.HintOn tObj
+         else
+            Gui.HintOff tObj
+            set the text of tObj to pValue
+         end if
+         break
       case "label"
          set the text of tObj to pValue
          break

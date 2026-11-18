@@ -15,7 +15,8 @@ Stages 1 and 2 of PLAN.md section 7, the first working slice, in `livecode/lib_g
 | Using a widget | sends `guiDo name, value` to the window's script, or the `do=` message with the value; once a use |
 | House rules | the built stack frees itself when closed; its title is "FOR OWNER \| <label>" (or `Users.Title` when LIB_USERS is in use) |
 | Examples | `gui/status_browser.gui` (the plan's example), `gui/notes.gui` (one of every kind drawn) |
-| Test | `OXT-BEYOND/tests/t41_lib_gui.txt`: 84 checks, all pass, no window needed |
+| Look fixes (18 Nov) | dark theme: `choice` and `menu` are light text on the panel colour when closed and turn to dark text while their list is open (`Gui.MenuOpen` / `Gui.MenuRest`: LIB_THEME's menu rule for the light list); the menu strip is a dark bar; a `list`'s selected line is white on the hilite colour (`Gui.ListMark`; a theme key `hiliteText` overrides); `hint=` shows dimmed in an empty `field` or `text` and goes when it is entered (`Gui.HintOff` / `Gui.HintOn`), `Gui.Get` gives empty under it |
+| Test | `OXT-BEYOND/tests/t41_lib_gui.txt`: 104 checks, all pass, no window needed (the old "menu rule" check now reads the menu's list colour, `uGuiListText`, since the closed button is light text) |
 
 To try it in the IDE (Message Box):
 ```
@@ -28,7 +29,10 @@ Clicking a widget with no handler for `guiDo` does nothing visible yet; look at 
 ## Not done yet (on purpose)
 
 - `stick=` is stored on each control but nothing moves when the window is resized (`Gui.Resize`, stage 3).
-- `panel slider tabs view` are skipped and noted (stage 3). `hint=` shows as a tooltip, not grey words.
+- `panel slider tabs view` are skipped and noted (stage 3). `hint=` shows as dimmed words (and still as a tooltip).
+- To check on screen (not testable headless): does the open list of File and of the choice show dark text on light,
+  and does the closed button go back to light text after a cancelled menu (restored on menuPick, mouseUp, mouseRelease)?
+  If the choice's open list turns out dark (Windows draws option menus itself), clear its `uGuiListText` in `guiAfterTheme`.
 - `key=`, `float=`, `may=` are noted as "not done yet" in `Gui.Problems()`.
 - No About card on built stacks yet (rule 17).
 - `Gui.FromStack`, the XTJSON importer, the GUI Builder: later stages.
