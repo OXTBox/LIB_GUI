@@ -157,6 +157,7 @@ middle, the selected widget's line as a small property list on the right.
 |---|---|
 | New / Open / Save a `.gui` | menus; saves ask `Users.May("save")` |
 | Add a widget | click a kind, drag a rectangle |
+| Draw from the centre | Alt-drag sizes the widget out from where you clicked (Scott Rossi's Epicenterizer, 2008: `xtalk_py/corpus/reference/Epicenterizer_draw_from_centre_Scott_Rossi_2008.livecodescript`; credit him) |
 | Move, resize, rename, relabel | drag; arrow keys move 1 px, with Shift 10; a grid snap of 4 px |
 | Set options | the property list is the widget's line, one option a row |
 | Try it | "Run" shows the layout as a real window; every `guiDo` is listed in a log pane |
