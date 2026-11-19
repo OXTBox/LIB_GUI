@@ -1,0 +1,13 @@
+# read out of stack "Status_Browser" by Gui.FromStack: 8 widgets, 0 unknown, 1 notes
+# not carried: scripts (5 controls, the stack: 267 lines)
+gui	1
+window	Status_Browser	572,401	Status_Browser
+# note: 6 lines of text in "LLMNote" not carried (a .gui line holds one)
+text	LLMNote	230,0,343,130
+list	Scrolling List Field	0,21,230,377	o Status_Browser_Launcher.livecode   LIB_DEV|* Status_Browser.livecode   LIB_DEV|* BitEditor.livecode   LIB_BIT|+ lib_bit.livecodescript   LIB_BIT|* amazing_couple.cellmap   LIB_BIT|+ Aquarius.font.txt   LIB_BIT|* Vibecode3D_Play_Amazing_Couple.livecodescript   LIB_GAMES|o dark.txt   LIB_THEME|o lib_theme.livecodescript   LIB_THEME|+ E02_RaiseLower.livecodescript   LIB_EDITOR|+ E01_Blocks.livecodescript   LIB_EDITOR|* PLAN.md   LIB_EDITOR|* tags_default.txt   LIB_BIT|* README.md   LIB_BIT|+ 1BIT_TO_3D_UTILITY.md   LIB_BIT|* PLAN.md   LIB_HOWTO|* REVIEW.md   LIB_SPARK|* OUTLINE.md   LIB_SPARK
+text	Feedback	230,151,343,245
+label	Label Field	235,131,245,21	Feedback
+button	Submit	486,132,82,18	Submit
+button	Refresh	1,3,82,18	Refresh
+button	TellClaude	86,3,94,18	Tell Claude
+popup	ReviewMenu	Reviewed|Not Reviewed|-|Open in Explorer|Copy Path
