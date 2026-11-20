@@ -17,3 +17,7 @@ button	save	8,260,100,28	Save
 | It owns | It leaves to |
 |---|---|
 | the `.gui` format, the widget kinds, `Gui.*`, `guiDo`, the native face, the Builder | colours: LIB_THEME. Who and titles: LIB_USERS. raygui drawing: LIB_RAYGUI. The launcher: LIB_TOOLBAR |
+
+## Licence
+
+GPL-3.0 (see `LICENSE`), because the xTalk work here is built on the GPL-licensed LiveCode Community 9 engine. Copyright (c) 2026 xAction.
